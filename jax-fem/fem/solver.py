@@ -15,32 +15,49 @@ from jax_am import logger
 
 
 def petsc_solve(A, b, ksp_type, pc_type):
+    # Set the right hand side
     rhs = PETSc.Vec().createSeq(len(b))
     rhs.setValues(range(len(b)), onp.array(b))
+
+    # Instantiate the linear  system solver
     ksp = PETSc.KSP().create()
     ksp.setOperators(A)
     ksp.setFromOptions()
     ksp.setType(ksp_type)
     ksp.pc.setType(pc_type)
+
     logger.debug(
         f'PETSc - Solving with ksp_type = {ksp.getType()}, '
         f'pc = {ksp.pc.getType()}'
     )
+
+    # Preallocate solution vector
     x = PETSc.Vec().createSeq(len(b))
+
+    # Solve!
     ksp.solve(rhs, x)
 
     # Verify convergence
     y = PETSc.Vec().createSeq(len(b))
-    A.mult(x, y)
+    A.mult(x, y) # y = Ax
 
-    err = np.linalg.norm(y.getArray() - rhs.getArray())
-    logger.debug(f"PETSc linear solve res = {err}")
+    residual = np.linalg.norm(y.getArray() - rhs.getArray())
+
+    ksp_residual = ksp.getResidualNorm()
+
+    logger.debug(f"PETSc linear solve res = {residual}")
+    logger.debug(f"PETSc petsc residual = {ksp_residual}")
+
+
+
+
     # assert err < 0.1, f"PETSc linear solver failed to converge, err = {err}"
 
     return x.getArray()
 
 
 def jax_solve(problem, A_fn, b, x0, precond: bool, pc_matrix=None):
+
     """Solves the equilibrium equation using a JAX solver.
     Is fully traceable and runs on GPU.
 
